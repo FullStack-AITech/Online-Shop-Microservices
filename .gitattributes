@@ -1,0 +1,17 @@
+# Normalise line endings so a checkout behaves the same on Windows, Linux and macOS.
+* text=auto
+
+# These are executed by a shell — CRLF makes them fail with "bad interpreter: ^M",
+# which matters because the containers and CI run on Linux.
+mvnw           text eol=lf
+*.sh           text eol=lf
+Dockerfile     text eol=lf
+*.dockerignore text eol=lf
+
+# YAML is read by Docker Compose and Kubernetes; keep it LF for the same reason.
+*.yml          text eol=lf
+*.yaml         text eol=lf
+
+# Windows batch files must keep CRLF.
+*.cmd          text eol=crlf
+*.bat          text eol=crlf
