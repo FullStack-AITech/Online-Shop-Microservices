@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:product_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      # Flyway's Postgres migrations do not run on H2, so the test schema comes from JPA.
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
