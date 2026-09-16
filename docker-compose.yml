@@ -1,12 +1,13 @@
 # Local development stack for the Online Shop Microservices platform.
 #
-# Week 2 scope: User Service and Product Service, each with its own database.
-# Later weeks add the Order, Payment and Notification services, the message broker,
+# Week 3 scope: User, Product and Order services, each with its own database.
+# Later weeks add the Payment and Notification services, the message broker,
 # the API Gateway and the monitoring stack.
 #
 #   docker compose up --build
 #   User Service     http://localhost:8000/docs
 #   Product Service  http://localhost:8081/swagger-ui.html
+#   Order Service    http://localhost:8082/swagger
 
 services:
   # --- Databases -------------------------------------------------------------
@@ -52,6 +53,25 @@ services:
     networks:
       - shop
 
+  order-db:
+    image: postgres:16-alpine
+    container_name: order-db
+    environment:
+      POSTGRES_USER: order_service
+      POSTGRES_PASSWORD: order_service
+      POSTGRES_DB: order_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_service -d order_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shop
+
   # --- Services --------------------------------------------------------------
 
   user-service:
@@ -90,9 +110,40 @@ services:
     networks:
       - shop
 
+  order-service:
+    build:
+      context: ./services/order-service
+    container_name: order-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Double underscore is the configuration section separator, so this maps onto
+      # ConnectionStrings:OrderDatabase without any code knowing it came from the env.
+      ORDER_SERVICE_ConnectionStrings__OrderDatabase: >-
+        Host=order-db;Port=5432;Database=order_db;Username=order_service;Password=order_service
+      ORDER_SERVICE_Database__MigrateOnStartup: "true"
+      # Services address each other by container name on the shared network; no host
+      # ports and no hardcoded IPs.
+      ORDER_SERVICE_Downstream__ProductService__BaseUrl: http://product-service:8081
+      ORDER_SERVICE_Downstream__UserService__BaseUrl: http://user-service:8000
+    ports:
+      - "8082:8082"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      # Started, not healthy: the Order Service must tolerate its dependencies being
+      # down — that is what the timeouts and circuit breakers are for — so waiting on
+      # them here would hide the behaviour rather than prove it.
+      product-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+    networks:
+      - shop
+
 volumes:
   user-db-data:
   product-db-data:
+  order-db-data:
 
 networks:
   shop:
