@@ -38,7 +38,7 @@ a distributed monolith.
 |----------------------|---------------------|------------------------------------|
 | User Service         | FastAPI (Python)    | ✅ Built, 24 tests passing          |
 | Product Service      | Spring Boot (Java)  | ✅ Built, 21 tests passing          |
-| Order Service        | .NET (C#)           | ⬜ Week 3                          |
+| Order Service        | .NET (C#)           | ✅ Built, 70 tests passing          |
 | Payment Service      | FastAPI (Python)    | ⬜ Week 4                          |
 | Notification Service | Spring Boot (Java)  | ⬜ Week 4                          |
 | Message Broker       | Kafka / RabbitMQ    | ⬜ Week 4                          |
@@ -57,22 +57,26 @@ docker compose up --build
 |------------------|-----------------------------------------|
 | User Service     | http://localhost:8000/docs              |
 | Product Service  | http://localhost:8081/swagger-ui.html   |
+| Order Service    | http://localhost:8082/swagger           |
 | user_db          | `localhost:5432`                        |
 | product_db       | `localhost:5433`                        |
+| order_db         | `localhost:5434`                        |
 
 To run a single service without Docker, see its own README:
 
 - [services/user-service/](services/user-service/README.md) — runs on SQLite, no Postgres needed
 - [services/product-service/](services/product-service/README.md) — needs JDK 21; use the
   bundled `./mvnw` so no Maven install is required
+- [services/order-service/](services/order-service/README.md) — needs the .NET 8 SDK
 
 ## API documentation
 
 - [User Service API](docs/api/user-service.md)
 - [Product Service API](docs/api/product-service.md)
+- [Order Service API](docs/api/order-service.md)
 
-Both services also serve live, generated documentation: Swagger UI at `/docs` (FastAPI) and
-`/swagger-ui.html` (Spring Boot).
+Each service also serves live, generated documentation: `/docs` (FastAPI),
+`/swagger-ui.html` (Spring Boot) and `/swagger` (.NET).
 
 ## Conventions shared by every service
 
@@ -90,6 +94,9 @@ These are decided once here so the services stay consistent as more are added.
 - **Layered inside each service.** Transport → business rules → data access. The business
   layer never imports HTTP types, so it stays reusable from an event consumer.
 - **UUID identifiers.** Opaque, non-enumerable, and safe to publish in events.
+- **Every outbound call has a timeout, and only idempotent calls are retried.** Retrying a
+  non-idempotent operation after an ambiguous failure is how stock, charges and emails get
+  duplicated. See [the Order Service reference](docs/api/order-service.md#resilience).
 
 ## Repository layout
 
