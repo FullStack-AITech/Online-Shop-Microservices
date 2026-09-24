@@ -1,0 +1,45 @@
+[project]
+name = "payment-service"
+version = "0.1.0"
+description = "Payment Service for the Online Shop Microservices platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "email-validator>=2.1",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "aiokafka>=0.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+    "ruff==0.14.0",
+    "jsonschema>=4.18",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    # SQLite has no decimal type; the values still round-trip exactly at two places,
+    # and Postgres (the real target) stores NUMERIC natively.
+    "ignore:Dialect sqlite\\+pysqlite does \\*not\\* support Decimal objects natively",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+# The alembic/ migrations directory would otherwise make ruff treat the library as ours.
+known-third-party = ["alembic"]

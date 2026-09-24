@@ -1,0 +1,12 @@
+# Runtime dependencies for the Payment Service.
+# Pinned to minor versions; see pyproject.toml for the authoritative project metadata.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+sqlalchemy>=2.0,<3.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+email-validator>=2.1,<3.0
+psycopg[binary]>=3.1,<4.0
+alembic>=1.13,<2.0
+# 0.14 is the first release with Python 3.14 wheels; 0.11-0.13 still work on 3.13 (the image).
+aiokafka>=0.11,<1.0
