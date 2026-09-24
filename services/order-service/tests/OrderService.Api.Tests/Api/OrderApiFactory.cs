@@ -10,8 +10,9 @@ using OrderService.Infrastructure.Persistence;
 namespace OrderService.Api.Tests.Api;
 
 /// <summary>
-/// Hosts the real application with two things swapped out: the database becomes in-memory
-/// SQLite, and the two downstream services become in-memory fakes.
+/// Hosts the real application with three things swapped out: the database becomes in-memory
+/// SQLite, the two downstream services become in-memory fakes, and the event publisher
+/// records events instead of sending them.
 /// </summary>
 /// <remarks>
 /// Everything else — routing, model binding, the exception middleware, the handlers, the
@@ -26,6 +27,8 @@ public sealed class OrderApiFactory : WebApplicationFactory<Program>
 
     public FakeUserDirectory Users { get; } = new();
 
+    public FakeEventPublisher Publisher { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:OrderDatabase", "Data Source=:memory:");
@@ -33,6 +36,10 @@ public sealed class OrderApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Downstream:ProductService:BaseUrl", "http://product.test");
         builder.UseSetting("Downstream:UserService:BaseUrl", "http://user.test");
+        // No broker, and no background consumer or pruner: tests drive the handlers and the
+        // message processor directly, and must not race them for the database.
+        builder.UseSetting("Kafka:BootstrapServers", "");
+        builder.UseSetting("Kafka:ConsumersEnabled", "false");
 
         builder.ConfigureServices(services =>
         {
@@ -49,6 +56,9 @@ public sealed class OrderApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IUserDirectory>();
             services.AddSingleton<IProductCatalog>(Catalog);
             services.AddSingleton<IUserDirectory>(Users);
+
+            services.RemoveAll<IEventPublisher>();
+            services.AddSingleton<IEventPublisher>(Publisher);
 
             using var scope = services.BuildServiceProvider().CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<OrderDbContext>();

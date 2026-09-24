@@ -1,5 +1,8 @@
+using Confluent.Kafka;
 using OrderService.Application.Abstractions;
+using OrderService.Application.Events;
 using OrderService.Infrastructure.Catalog;
+using OrderService.Infrastructure.Messaging;
 
 namespace OrderService.Api.Tests.Api;
 
@@ -100,5 +103,72 @@ public sealed class FakeUserDirectory : IUserDirectory
         }
 
         return Task.FromResult(_users.GetValueOrDefault(userId));
+    }
+}
+
+/// <summary>
+/// Records every event instead of sending it, so a test can assert on exactly what would
+/// have gone to the broker.
+/// </summary>
+/// <remarks>
+/// The factory is shared by every test in a class, so tests look for the event about
+/// <b>their</b> order rather than counting the whole list.
+/// </remarks>
+public sealed class FakeEventPublisher : IEventPublisher
+{
+    private readonly List<(IntegrationEvent Event, string Key)> _published = [];
+
+    /// <summary>Set to make every publish throw, as an unreachable broker would.</summary>
+    public bool Fail { get; set; }
+
+    public IReadOnlyList<(IntegrationEvent Event, string Key)> Published
+    {
+        get
+        {
+            lock (_published)
+            {
+                return _published.ToList();
+            }
+        }
+    }
+
+    public IReadOnlyList<(IntegrationEvent Event, string Key)> For(string orderId) =>
+        Published.Where(published => published.Key == orderId).ToList();
+
+    public Task PublishAsync(IntegrationEvent @event, string partitionKey,
+        CancellationToken cancellationToken)
+    {
+        if (Fail)
+        {
+            throw new KafkaException(ErrorCode.Local_MsgTimedOut);
+        }
+
+        lock (_published)
+        {
+            _published.Add((@event, partitionKey));
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Captures dead letters rather than producing them.</summary>
+public sealed class FakeDeadLetterProducer : IDeadLetterProducer
+{
+    public List<(string Topic, Message<string, string> Message)> Produced { get; } = [];
+
+    /// <summary>Set to make the dead letter topic unreachable too.</summary>
+    public bool Fail { get; set; }
+
+    public Task ProduceAsync(string topic, Message<string, string> message,
+        CancellationToken cancellationToken)
+    {
+        if (Fail)
+        {
+            throw new KafkaException(ErrorCode.Local_MsgTimedOut);
+        }
+
+        Produced.Add((topic, message));
+        return Task.CompletedTask;
     }
 }
