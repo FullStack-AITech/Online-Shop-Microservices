@@ -1,0 +1,21 @@
+{
+  "eventId": "0e9d8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b",
+  "eventType": "OrderCancelled",
+  "eventVersion": 1,
+  "occurredAt": "2026-09-24T10:05:00Z",
+  "correlationId": "5b0f6f5c-9a8e-4d3c-b2a1-f0e9d8c7b6a5",
+  "producer": "order-service",
+  "payload": {
+    "orderId": "3f2b1c9e-8d7a-4e6f-b5a4-1c2d3e4f5a6b",
+    "userId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+    "reason": "customer_request",
+    "previousStatus": "AwaitingPayment",
+    "lines": [
+      {
+        "productId": "6e5d4c3b-2a19-4f8e-9d7c-6b5a4f3e2d1c",
+        "quantity": 2
+      }
+    ],
+    "cancelledAt": "2026-09-24T10:05:00Z"
+  }
+}

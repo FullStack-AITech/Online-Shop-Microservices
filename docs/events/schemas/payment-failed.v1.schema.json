@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onlineshop.local/events/payment-failed.v1.schema.json",
+  "title": "PaymentFailed v1",
+  "description": "Payment for an order was declined or could not be taken. Topic: payments, key: orderId.",
+  "allOf": [
+    {
+      "$ref": "envelope.v1.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "PaymentFailed"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "paymentId",
+        "orderId",
+        "userId",
+        "userEmail",
+        "amount",
+        "currency",
+        "reason",
+        "failedAt"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email"
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "description": "Decimal string, two decimal places"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z][a-z_]*$",
+          "description": "Machine code, e.g. card_declined"
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
