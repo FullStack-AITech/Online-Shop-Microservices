@@ -1,17 +1,20 @@
 # Local development stack for the Online Shop Microservices platform.
 #
-# Week 3 scope: User, Product and Order services, each with its own database.
-# Later weeks add the Payment and Notification services, the message broker,
-# the API Gateway and the monitoring stack.
+# Week 4 scope: five services, each with its own database, talking over Kafka.
+# Later weeks add the API Gateway, the Auth Service and the monitoring stack.
 #
 #   docker compose up --build
-#   User Service     http://localhost:8000/docs
-#   Product Service  http://localhost:8081/swagger-ui.html
-#   Order Service    http://localhost:8082/swagger
+#   User Service          http://localhost:8000/docs
+#   Product Service       http://localhost:8081/swagger-ui.html
+#   Order Service         http://localhost:8082/swagger
+#   Payment Service       http://localhost:8083/docs
+#   Notification Service  http://localhost:8084/swagger-ui.html
+#   Kafka UI              http://localhost:8090
+#   Kafka (from the host) localhost:29092
 
 services:
   # --- Databases -------------------------------------------------------------
-  # Database-per-service: two separate Postgres instances, not two schemas in one.
+  # Database-per-service: one Postgres instance per service, not schemas in one.
   # Sharing a database would couple the services at their most brittle layer.
 
   user-db:
@@ -72,6 +75,115 @@ services:
     networks:
       - shop
 
+  payment-db:
+    image: postgres:16-alpine
+    container_name: payment-db
+    environment:
+      POSTGRES_USER: payment_service
+      POSTGRES_PASSWORD: payment_service
+      POSTGRES_DB: payment_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment_service -d payment_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shop
+
+  notification-db:
+    image: postgres:16-alpine
+    container_name: notification-db
+    environment:
+      POSTGRES_USER: notification_service
+      POSTGRES_PASSWORD: notification_service
+      POSTGRES_DB: notification_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_service -d notification_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shop
+
+  # --- Messaging -------------------------------------------------------------
+  # One Kafka broker in KRaft mode (no ZooKeeper). Why Kafka and why these settings:
+  # docs/decisions/0001-message-broker.md.
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka
+    environment:
+      # Any stable base64 UUID. Changing it with an existing volume stops the broker
+      # starting (cluster id mismatch): `docker compose down -v`.
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Two client listeners, because the broker hands its advertised address back to
+      # clients: containers must be told `kafka:9092`, the host `localhost:29092`.
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Replication factor 1 is a local-only setting; production needs 3 (see the ADR).
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Topics come from infrastructure/kafka/create-topics.sh, never from a typo in a
+      # producer's config.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - shop
+
+  # One-shot: creates the topics, then exits 0. Producers and consumers wait for it to
+  # complete, because with auto-creation off a missing topic is an error.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/kafka/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["bash", "/create-topics.sh"]
+    restart: "no"
+    networks:
+      - shop
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.0.0
+    container_name: kafka-ui
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8090:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - shop
+
   # --- Services --------------------------------------------------------------
 
   user-service:
@@ -125,6 +237,12 @@ services:
       # ports and no hardcoded IPs.
       ORDER_SERVICE_Downstream__ProductService__BaseUrl: http://product-service:8081
       ORDER_SERVICE_Downstream__UserService__BaseUrl: http://user-service:8000
+      # Kafka: publishes OrderCreated/OrderCancelled to `orders`, consumes `payments`.
+      ORDER_SERVICE_Kafka__BootstrapServers: kafka:9092
+      ORDER_SERVICE_Kafka__OrdersTopic: orders
+      ORDER_SERVICE_Kafka__PaymentsTopic: payments
+      ORDER_SERVICE_Kafka__DeliveryTimeoutMs: "5000"
+      ORDER_SERVICE_Kafka__ConsumersEnabled: "true"
     ports:
       - "8082:8082"
     depends_on:
@@ -137,6 +255,74 @@ services:
         condition: service_started
       user-service:
         condition: service_started
+      # Topics must exist before the first publish: auto-creation is off on the broker.
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - shop
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+    container_name: payment-service
+    environment:
+      PAYMENT_SERVICE_ENVIRONMENT: docker
+      PAYMENT_SERVICE_DATABASE_URL: postgresql+psycopg://payment_service:payment_service@payment-db:5432/payment_db
+      PAYMENT_SERVICE_FAKE_DECLINE_ABOVE: "1000.00"
+    ports:
+      - "8083:8083"
+    depends_on:
+      payment-db:
+        condition: service_healthy
+    networks:
+      - shop
+
+  # Same image as payment-service, different process: the OrderCreated consumer. Kept
+  # separate so consumers can be scaled (up to the topic's partition count) independently
+  # of the API.
+  payment-consumer:
+    build:
+      context: ./services/payment-service
+    container_name: payment-consumer
+    command: ["python", "-m", "app.consumer"]
+    # Exits 1 when Kafka is unreachable. Offsets are committed only after processing, so
+    # a restart resumes exactly where it left off.
+    restart: on-failure
+    environment:
+      PAYMENT_SERVICE_ENVIRONMENT: docker
+      PAYMENT_SERVICE_DATABASE_URL: postgresql+psycopg://payment_service:payment_service@payment-db:5432/payment_db
+      PAYMENT_SERVICE_FAKE_DECLINE_ABOVE: "1000.00"
+      PAYMENT_SERVICE_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    # The image's healthcheck probes the HTTP port, which this process does not serve.
+    healthcheck:
+      disable: true
+    depends_on:
+      # Healthy means its entrypoint has run `alembic upgrade head`.
+      payment-service:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - shop
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+    container_name: notification-service
+    environment:
+      NOTIFICATION_SERVICE_DATASOURCE_URL: jdbc:postgresql://notification-db:5432/notification_db
+      NOTIFICATION_SERVICE_DATASOURCE_USERNAME: notification_service
+      NOTIFICATION_SERVICE_DATASOURCE_PASSWORD: notification_service
+      NOTIFICATION_SERVICE_PORT: "8084"
+      NOTIFICATION_SERVICE_LOG_LEVEL: INFO
+      NOTIFICATION_SERVICE_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8084:8084"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - shop
 
@@ -144,6 +330,9 @@ volumes:
   user-db-data:
   product-db-data:
   order-db-data:
+  payment-db-data:
+  notification-db-data:
+  kafka-data:
 
 networks:
   shop:
