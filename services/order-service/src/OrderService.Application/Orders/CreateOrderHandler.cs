@@ -1,17 +1,23 @@
 using Microsoft.Extensions.Logging;
 using OrderService.Application.Abstractions;
 using OrderService.Application.Common;
+using OrderService.Application.Events;
 using OrderService.Domain.Orders;
 
 namespace OrderService.Application.Orders;
 
 public sealed record CreateOrderLine(string ProductId, int Quantity);
 
-public sealed record CreateOrderCommand(string UserId, IReadOnlyList<CreateOrderLine> Lines);
+/// <param name="CorrelationId">
+/// From the caller's <c>X-Correlation-Id</c> header, else a fresh id, so one checkout can be
+/// followed through every service that reacts to it.
+/// </param>
+public sealed record CreateOrderCommand(string UserId, IReadOnlyList<CreateOrderLine> Lines,
+    string CorrelationId);
 
 /// <summary>
 /// Places an order: validate the user, price the lines from the catalogue, reserve stock,
-/// then persist.
+/// persist, then announce it with <c>OrderCreated</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,6 +36,7 @@ public sealed class CreateOrderHandler(
     IOrderRepository repository,
     IProductCatalog catalog,
     IUserDirectory users,
+    IEventPublisher publisher,
     ILogger<CreateOrderHandler> logger)
 {
     public async Task<Result<Order>> HandleAsync(CreateOrderCommand command,
@@ -106,6 +113,27 @@ public sealed class CreateOrderHandler(
         logger.LogInformation(
             "Created order {OrderId} for user {UserId} with {LineCount} lines totalling {Total} {Currency}",
             order.Id, order.UserId, order.Lines.Count, order.TotalAmount, order.Currency);
+
+        // Published only after the order is committed, and outside the try above: its catch
+        // releases stock, which would be wrong for an order that *was* stored.
+        //
+        // This is a dual write, and no ordering of the two makes it safe. Publish first and a
+        // failed commit announces an order that does not exist; commit first (as here) and a
+        // crash or broker outage in between loses the event. The order stays AwaitingPayment
+        // with nobody told. Closing that gap is the transactional outbox, #34. Until then the
+        // failure is logged at Critical, and the request still succeeds, because the order
+        // really was placed.
+        try
+        {
+            await publisher.PublishAsync(OrderCreatedV1.From(order, user, command.CorrelationId),
+                order.Id.ToString(), cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // Known gap until the transactional outbox (#34): the order is stored but unannounced.
+            logger.LogCritical(exception, "OrderCreated for order {OrderId} was NOT published",
+                order.Id);
+        }
 
         return order;
     }

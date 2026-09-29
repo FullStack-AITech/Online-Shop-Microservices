@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onlineshop.local/events/payment-processed.v1.schema.json",
+  "title": "PaymentProcessed v1",
+  "description": "Payment for an order was captured. Topic: payments, key: orderId.",
+  "allOf": [
+    {
+      "$ref": "envelope.v1.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "PaymentProcessed"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "paymentId",
+        "orderId",
+        "userId",
+        "userEmail",
+        "amount",
+        "currency",
+        "processedAt"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email"
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "description": "Decimal string, two decimal places"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "processedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

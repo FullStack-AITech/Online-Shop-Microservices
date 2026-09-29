@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onlineshop.local/events/order-cancelled.v1.schema.json",
+  "title": "OrderCancelled v1",
+  "description": "An order was cancelled. Carries no email: the order does not store one. Topic: orders, key: orderId.",
+  "allOf": [
+    {
+      "$ref": "envelope.v1.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "OrderCancelled"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "userId",
+        "reason",
+        "previousStatus",
+        "lines",
+        "cancelledAt"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previousStatus": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "productId",
+              "quantity"
+            ],
+            "properties": {
+              "productId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "cancelledAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

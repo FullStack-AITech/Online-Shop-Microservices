@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onlineshop.local/events/order-created.v1.schema.json",
+  "title": "OrderCreated v1",
+  "description": "An order was accepted: stock is reserved and it awaits payment. Topic: orders, key: orderId.",
+  "allOf": [
+    {
+      "$ref": "envelope.v1.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "OrderCreated"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "userId",
+        "userEmail",
+        "currency",
+        "totalAmount",
+        "totalItems",
+        "lines",
+        "createdAt"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "totalAmount": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "description": "Decimal string, two decimal places"
+        },
+        "totalItems": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lines": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "productId",
+              "sku",
+              "productName",
+              "unitPrice",
+              "quantity",
+              "lineTotal"
+            ],
+            "properties": {
+              "productId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sku": {
+                "type": "string",
+                "minLength": 1
+              },
+              "productName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "unitPrice": {
+                "type": "string",
+                "pattern": "^-?\\d+\\.\\d{2}$",
+                "description": "Decimal string, two decimal places"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "lineTotal": {
+                "type": "string",
+                "pattern": "^-?\\d+\\.\\d{2}$",
+                "description": "Decimal string, two decimal places"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest>=8.2
+httpx>=0.27
+# Pinned exactly so every machine lints with the same rules.
+ruff==0.14.0
+# Validates produced events against docs/events/schemas (scripts/validate-event-schemas.py).
+jsonschema>=4.18

@@ -11,6 +11,9 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options) : D
 {
     public DbSet<Order> Orders => Set<Order>();
 
+    /// <summary>Incoming events already acted on. See <c>ProcessedEventStore</c>.</summary>
+    public DbSet<ProcessedEvent> ProcessedEvents => Set<ProcessedEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrderDbContext).Assembly);
@@ -26,6 +29,12 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options) : D
                 .HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate()
                 .IsConcurrencyToken();
+
+            // Matches the DDL in docs/events/README.md, so a row inserted by hand during an
+            // incident still gets a timestamp the pruner can act on.
+            modelBuilder.Entity<ProcessedEvent>()
+                .Property(processed => processed.ProcessedAt)
+                .HasDefaultValueSql("now()");
         }
         else
         {

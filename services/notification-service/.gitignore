@@ -1,0 +1,6 @@
+target/
+*.class
+*.log
+*.db
+# JVM crash reports
+hs_err_pid*.log

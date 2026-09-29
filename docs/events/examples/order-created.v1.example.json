@@ -1,0 +1,27 @@
+{
+  "eventId": "7d1b8f5e-2c3a-4f6b-9a1e-0c5d4b3a2f10",
+  "eventType": "OrderCreated",
+  "eventVersion": 1,
+  "occurredAt": "2026-09-24T10:00:00Z",
+  "correlationId": "5b0f6f5c-9a8e-4d3c-b2a1-f0e9d8c7b6a5",
+  "producer": "order-service",
+  "payload": {
+    "orderId": "3f2b1c9e-8d7a-4e6f-b5a4-1c2d3e4f5a6b",
+    "userId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+    "userEmail": "a@b.com",
+    "currency": "GBP",
+    "totalAmount": "99.98",
+    "totalItems": 2,
+    "lines": [
+      {
+        "productId": "6e5d4c3b-2a19-4f8e-9d7c-6b5a4f3e2d1c",
+        "sku": "KB-1",
+        "productName": "Keyboard",
+        "unitPrice": "49.99",
+        "quantity": 2,
+        "lineTotal": "99.98"
+      }
+    ],
+    "createdAt": "2026-09-24T10:00:00Z"
+  }
+}

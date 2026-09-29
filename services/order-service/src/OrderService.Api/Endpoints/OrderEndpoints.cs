@@ -39,9 +39,11 @@ public static class OrderEndpoints
             .Produces<OrderPageResponse>();
 
         orders.MapPost("/{orderId:guid}/pay", PayAsync)
-            .WithSummary("Mark an order paid")
-            .WithDescription("Driven by an explicit call for now; week 4 replaces this with "
-                             + "a PaymentProcessed event consumer.")
+            .WithSummary("Mark an order paid (manual recovery)")
+            .WithDescription("Payment normally arrives as a PaymentProcessed event from the "
+                             + "Payment Service. This endpoint remains for operators to "
+                             + "recover an order by hand, and is not routed through the "
+                             + "gateway.")
             .Produces<OrderResponse>()
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict);
@@ -59,15 +61,19 @@ public static class OrderEndpoints
             .Produces(StatusCodes.Status409Conflict);
     }
 
+    private const string CorrelationHeader = "X-Correlation-Id";
+
     private static async Task<IResult> CreateAsync(
         [FromBody] CreateOrderRequest request,
+        [FromHeader(Name = CorrelationHeader)] string? correlationId,
         CreateOrderHandler handler,
         CancellationToken cancellationToken)
     {
         var command = new CreateOrderCommand(
             request.UserId,
             request.Lines.Select(line => new CreateOrderLine(line.ProductId, line.Quantity))
-                .ToList());
+                .ToList(),
+            CorrelationIdOrNew(correlationId));
 
         var result = await handler.HandleAsync(command, cancellationToken);
         if (!result.IsSuccess)
@@ -111,10 +117,22 @@ public static class OrderEndpoints
 
     private static Task<IResult> CancelAsync(Guid orderId,
         [FromBody] CancelOrderRequest? request,
+        [FromHeader(Name = CorrelationHeader)] string? correlationId,
         UpdateOrderStatusHandler handler,
         CancellationToken cancellationToken) =>
         MutateAsync(() => handler.CancelAsync(orderId,
-            request?.Reason ?? "Cancelled by request", cancellationToken));
+            request?.Reason ?? "Cancelled by request", CorrelationIdOrNew(correlationId),
+            cancellationToken));
+
+    /// <summary>
+    /// The caller's correlation id, or a fresh one when this request starts the story.
+    /// </summary>
+    /// <remarks>
+    /// It is copied onto every event this request causes, and each consumer copies it onto
+    /// the events it emits in turn, so one checkout can be traced across every service.
+    /// </remarks>
+    private static string CorrelationIdOrNew(string? header) =>
+        string.IsNullOrWhiteSpace(header) ? Guid.NewGuid().ToString() : header.Trim();
 
     private static async Task<IResult> MutateAsync(Func<Task<Result<Order>>> operation)
     {

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OrderService.Application.Abstractions;
 using OrderService.Application.Orders;
 using OrderService.Infrastructure.Catalog;
+using OrderService.Infrastructure.Messaging;
 using OrderService.Infrastructure.Persistence;
 using OrderService.Infrastructure.Persistence.Repositories;
 using OrderService.Infrastructure.Resilience;
@@ -22,15 +24,66 @@ public static class DependencyInjection
                                   "Connection string 'OrderDatabase' is not configured")));
 
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<ProcessedEventStore>();
+        services.AddScoped<IProcessedEventStore>(provider =>
+            provider.GetRequiredService<ProcessedEventStore>());
 
         services.AddScoped<CreateOrderHandler>();
         services.AddScoped<GetOrderHandler>();
         services.AddScoped<ListOrdersHandler>();
         services.AddScoped<UpdateOrderStatusHandler>();
+        services.AddScoped<HandlePaymentOutcomeHandler>();
 
         AddDownstreamClients(services, configuration);
+        AddMessaging(services, configuration);
 
         return services;
+    }
+
+    /// <summary>
+    /// Kafka when a broker is configured, a logging stand-in when it is not.
+    /// </summary>
+    /// <remarks>
+    /// The background workers are opt-out through <c>Kafka:ConsumersEnabled</c>, which the
+    /// API tests set to false: they drive the handlers directly and must not try to reach a
+    /// broker or race the test for the database.
+    /// </remarks>
+    private static void AddMessaging(IServiceCollection services, IConfiguration configuration)
+    {
+        var options = new KafkaOptions();
+        configuration.GetSection(KafkaOptions.SectionName).Bind(options);
+        services.AddSingleton(options);
+
+        if (options.IsConfigured)
+        {
+            services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
+        }
+        else
+        {
+            services.AddSingleton<IEventPublisher, LoggingEventPublisher>();
+        }
+
+        if (!options.ConsumersEnabled)
+        {
+            return;
+        }
+
+        services.AddHostedService<ProcessedEventsPruner>();
+
+        if (!options.IsConfigured)
+        {
+            // Nothing to consume from. Orders simply stay AwaitingPayment, and the manual
+            // POST /pay endpoint still works.
+            return;
+        }
+
+        services.AddSingleton<IDeadLetterProducer, KafkaDeadLetterProducer>();
+        services.AddSingleton(provider => new PaymentEventProcessor(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            provider.GetRequiredService<IDeadLetterProducer>(),
+            provider.GetRequiredService<ILogger<PaymentEventProcessor>>(),
+            retryDelay: TimeSpan.FromMilliseconds(500)));
+        services.AddHostedService<PaymentEventsConsumer>();
     }
 
     private static void AddDownstreamClients(IServiceCollection services,

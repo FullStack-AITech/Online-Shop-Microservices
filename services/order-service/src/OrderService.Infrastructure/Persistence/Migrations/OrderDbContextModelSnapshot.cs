@@ -125,6 +125,28 @@ namespace OrderService.Infrastructure.Persistence.Migrations
                     b.ToTable("order_lines", (string)null);
                 });
 
+            modelBuilder.Entity("OrderService.Infrastructure.Persistence.ProcessedEvent", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("Consumer")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("consumer");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("EventId", "Consumer");
+
+                    b.ToTable("processed_events", (string)null);
+                });
+
             modelBuilder.Entity("OrderService.Domain.Orders.OrderLine", b =>
                 {
                     b.HasOne("OrderService.Domain.Orders.Order", null)
